@@ -1,0 +1,64 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.ichi'
+version = '0.0.1-SNAPSHOT'
+description = 'Ichi — 가볍게 끄적이는 일기장 (백엔드)'
+
+java {
+    // 빌드 타깃을 Java 25로 통일 (로컬·빌드·Docker 동일). 최신 LTS 기준.
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // 세션 = JWT (stateless). OAuth code 교환은 RestClient로 직접.
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    // DB 마이그레이션
+    // Spring Boot 4 는 Flyway 자동설정이 별도 모듈(spring-boot-flyway)로 분리됨.
+    // 이게 없으면 flyway-core 가 있어도 마이그레이션이 자동 실행되지 않는다.
+    implementation 'org.springframework.boot:spring-boot-flyway'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // 본문 HTML sanitize (저장 전 XSS 방지). Drive API 는 RestClient 로 직접 호출.
+    implementation 'com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// 로컬에서 `gradlew bootRun` (또는 IntelliJ Gradle 패널 bootRun) 으로 띄우면
+// 자동으로 local 프로파일 적용 → Docker DB(localhost:15432) + 루트 .env 사용.
+tasks.named('bootRun') {
+    systemProperty 'spring.profiles.active',
+        System.getProperty('spring.profiles.active', 'local')
+}

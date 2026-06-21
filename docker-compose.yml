@@ -1,0 +1,80 @@
+# =========================================================================
+#  이치(Ichi) 로컬 실행 — PostgreSQL 17 + Spring Boot 백엔드 + Vue 프론트
+#  사용법:  cp .env.example .env  →  값 채우기  →  docker compose up --build
+# =========================================================================
+services:
+  db:
+    image: postgres:17
+    container_name: ichi-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ichi}
+      POSTGRES_USER: ${POSTGRES_USER:-ichi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ichi_dev_pw}
+    # 호스트 15432 → 컨테이너 5432. (5432/5433 은 Windows WinNAT 예약 범위에 걸려
+    #  바인딩 실패하므로 높은 포트 사용.) 로컬 Spring(bootRun)이 localhost:15432 로 접속.
+    ports:
+      - "15432:5432"
+    volumes:
+      - ichi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ichi} -d ${POSTGRES_DB:-ichi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: ichi-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/ichi}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-ichi}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-ichi_dev_pw}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:5173/auth/callback}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-at-least-32-bytes}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-10080}
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      # temurin 이미지엔 wget/curl 이 없어 bash 의 /dev/tcp 로 Actuator health 를 직접 호출.
+      # 응답 본문에 "UP" 이 있으면 정상.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/8080 &&
+          printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          cat <&3 | grep -q '"status":"UP"'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    container_name: ichi-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE: ${VITE_API_BASE:-/api}
+      VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+      VITE_GOOGLE_REDIRECT_URI: ${VITE_GOOGLE_REDIRECT_URI:-http://localhost:5173/auth/callback}
+      # 컨테이너 안에서 백엔드를 부르기 위한 프록시 타깃
+      BACKEND_ORIGIN: http://backend:8080
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+
+volumes:
+  ichi_pgdata:

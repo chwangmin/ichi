@@ -1,0 +1,125 @@
+/* mock.html 의 디자인 토큰 이식 — 이 톤/색을 전 화면에서 그대로 사용 */
+:root {
+  --paper: #fbfaf6;
+  --sidebar: #f3f1ea;
+  --card: #ffffff;
+  --ink: #2a2926;
+  --ink-soft: #6b6862;
+  --ink-faint: #9c988e;
+  --line: #e8e5dd;
+  --line-soft: #f0eee7;
+  --seal: #b5462f;
+  --seal-soft: #f6e4dd;
+  --hover: #eeece4;
+  --y: #fef7e0;
+  --y-b: #f4e7bc;
+  --g: #e8f3ec;
+  --g-b: #cfe6d6;
+  --b: #e9f0f7;
+  --b-b: #cfe0ef;
+  --p: #f1eaf5;
+  --p-b: #decee9;
+  --radius: 14px;
+
+  /* 색 카드 위 글자색 (밤에도 파스텔 카드는 밝게 유지하므로 글자는 항상 어둡게) */
+  --ink-on-color: #2a2926;
+
+  /* 모바일 노치/홈바 대응 (Capacitor 네이티브 래퍼) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/*
+ * 밤 테마 — 날씨가 '밤'일 때 .layout.night 에 적용 (AppShell 이 붙임).
+ * 어두운 밤하늘 배경 위에서 카드/글자가 묻히지 않도록 토큰을 밤용으로 오버라이드한다.
+ * 전 컴포넌트가 이 토큰만 쓰므로 한 곳에서 일괄 적용된다.
+ * 색 카드(--y/g/b/p)는 사용자가 고른 색이라 밝게 유지하고, 그 위 글자만 --ink-on-color 로 어둡게 둔다.
+ */
+.night {
+  /*
+   * body 의 color 는 :root 의 어두운 --ink 로 굳어 있어서, 색을 명시 안 한
+   * 제목(h1 등)은 밤에도 어둡게 상속된다. 여기서 텍스트 색을 밝게 깔아
+   * 누락된 요소까지 한 번에 읽히게 한다. (요소별 color 명시 누락 방지)
+   */
+  color: #eef1f6;
+
+  --paper: #1b2233;
+  --sidebar: #1f2738;
+  --card: #2a3346; /* 밤하늘 위에서 읽히는 어두운 슬레이트 카드 */
+  --ink: #eef1f6; /* 본문 글자 (밝게) */
+  --ink-soft: #b9c0cf;
+  --ink-faint: #8b94a7;
+  --line: #3a445a;
+  --line-soft: #323b4f;
+  --seal: #e07a5f; /* 어두운 배경에서 살아나도록 살짝 밝힌 인장색 */
+  --seal-soft: #4a2f29;
+  --hover: #353f54;
+  /* 달의 그림자(초승달 음영)를 밤 배경색과 맞춰 자연스럽게 */
+  --moon-shadow: #1b2740;
+
+  /*
+   * 색 카드(노랑/초록/파랑/보라) — 밤엔 파스텔 대신 어두운 같은 계열로.
+   * 배경은 어둡게, 테두리는 채도 살린 어두운 색. 위 글자는 흰색(--ink-on-color).
+   */
+  --ink-on-color: #f3f5fa; /* 밤엔 색 카드 위 글자도 밝게(흰색 계열) */
+  --y: #4a4322;
+  --y-b: #6e6330;
+  --g: #25402f;
+  --g-b: #356048;
+  --b: #233a52;
+  --b-b: #335274;
+  --p: #3a2f4a;
+  --p-b: #54426e;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: 'Noto Sans KR', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.mi {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* 접근성: 모션 최소화 선호 존중 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* 키보드 포커스 가시성 */
+:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="이치">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#e07a5f"/>
+  <g fill="#ffffff">
+    <path d="M14.55 32.35H40.25L43.55 27.75L49.55 32.75Q50.05 33.15 49.2 33.85H15.0Z"/>
+  </g>
+</svg>

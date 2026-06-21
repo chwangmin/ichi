@@ -1,0 +1,4 @@
+# docker-compose 내부 실행용. db 서비스명으로 접속.
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://db:5432/ichi}

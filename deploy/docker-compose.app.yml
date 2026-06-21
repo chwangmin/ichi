@@ -1,0 +1,135 @@
+# =========================================================================
+#  이치(Ichi) 배포용 — 블루그린 무중단 (백엔드 blue/green + API 엣지 nginx)
+#
+#  진입점은 외부의 Nginx Proxy Manager(NPM). NPM 이 도메인/TLS 를 처리하고,
+#  컨테이너명으로 아래 두 곳에 프록시한다(공유 네트워크 npm-network 로 join):
+#    NPM (도메인 /)      → frontend(정적 SPA, 단일)        : http://ichi-frontend:80
+#    NPM (도메인 /api/)  → api-edge(블루그린 스위치)        : http://ichi-api-edge:80
+#
+#  구성:
+#    api-edge(nginx :80) ── /api/    → active 색 백엔드(backend-blue | backend-green)
+#                          └ /healthz → active 백엔드 health
+#    backend-blue / backend-green  ← 같은 db 공유 (stateless, JWT)
+#    db(postgres 17, 단일)  /  frontend(nginx 정적, 단일)
+#
+#  프론트는 api-edge 를 거치지 않는다(블루그린 대상 아님). 백엔드만 api-edge 가 스위치.
+#  내부 컨테이너는 포트를 외부로 노출하지 않는다 — 진입은 오직 NPM 을 통해서.
+#
+#  사용 (deploy/ 에서):
+#    cp ../.env .env                     # 운영 .env 준비
+#    docker compose -f docker-compose.app.yml up -d --build
+#    ../deploy/switch.sh green           # 유휴 색 배포 → health 확인 → 트래픽 전환
+#    # NPM 에서 frontend/api-edge 를 프록시 호스트로 등록(도메인·TLS)
+#
+#  ⚠️ CI(Jenkins) compose 와 절대 한 파일에 섞지 않는다(별도 파일/네트워크).
+# =========================================================================
+services:
+  db:
+    image: postgres:17
+    container_name: ichi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ichi}
+      POSTGRES_USER: ${POSTGRES_USER:-ichi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in deploy .env}
+    volumes:
+      - ichi_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ichi} -d ${POSTGRES_DB:-ichi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [ichi]
+
+  # ---- 백엔드 blue ----
+  backend-blue:
+    build: ../backend
+    image: ichi-backend:${IMAGE_TAG:-latest}
+    container_name: ichi-backend-blue
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: &backend_env
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/ichi}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-ichi}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-${POSTGRES_PASSWORD}}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set (>=32 bytes)}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-10080}
+      TOKEN_ENC_KEY: ${TOKEN_ENC_KEY:?TOKEN_ENC_KEY must be set in production}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
+      # 운영 HTTPS 에서는 쿠키 Secure
+      ICHI_COOKIE_SECURE: ${ICHI_COOKIE_SECURE:-true}
+    healthcheck: &backend_health
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/localhost/8080 &&
+          printf 'GET /actuator/health HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          cat <&3 | grep -q '"status":"UP"'
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    networks: [ichi]
+
+  # ---- 백엔드 green (blue 와 동일, 컨테이너명만 다름) ----
+  backend-green:
+    build: ../backend
+    image: ichi-backend:${IMAGE_TAG:-latest}
+    container_name: ichi-backend-green
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment: *backend_env
+    healthcheck: *backend_health
+    networks: [ichi]
+
+  # ---- 프론트(정적, 단일) ----
+  frontend:
+    build:
+      context: ../frontend
+      target: prod
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_GOOGLE_REDIRECT_URI: ${VITE_GOOGLE_REDIRECT_URI:?VITE_GOOGLE_REDIRECT_URI must be set}
+    image: ichi-frontend:${IMAGE_TAG:-latest}
+    container_name: ichi-frontend
+    restart: unless-stopped
+    # ichi-net(내부) + npm-network(NPM 이 도메인 / 로 프록시). 포트는 노출하지 않음.
+    networks: [ichi, npm]
+
+  # ---- API 엣지 nginx (백엔드 전용, blue/green 스위치 지점) ----
+  #  NPM 이 도메인의 /api/ 를 이 컨테이너로 프록시한다. 프론트는 거치지 않는다.
+  api-edge:
+    image: nginx:alpine
+    container_name: ichi-api-edge
+    restart: unless-stopped
+    volumes:
+      # API 라우팅 본체 (read-only). conf.d/*.conf 는 nginx 가 자동 include.
+      - ./nginx/api-edge.conf:/etc/nginx/conf.d/default.conf:ro
+      # active 색 upstream — conf.d 밖에 둬서 자동 include 중복을 피하고,
+      # api-edge.conf 에서 명시적으로만 include 한다. switch.sh 가 이 파일을 교체 후 reload.
+      - ./nginx/active-upstream.conf:/etc/nginx/active-upstream.conf:ro
+    # ichi-net(백엔드 도달) + npm-network(NPM 이 도메인 /api/ 로 프록시). 포트 노출 없음.
+    networks: [ichi, npm]
+
+networks:
+  ichi:
+    name: ichi-net
+  # NPM(Nginx Proxy Manager)이 이미 쓰는 외부 네트워크. NPM 이 먼저 만들어 둔다.
+  # 이름은 deploy/.env 의 NPM_NETWORK 로 맞춘다(기본 npm-network).
+  npm:
+    name: ${NPM_NETWORK:-npm-network}
+    external: true
+
+volumes:
+  ichi_pgdata:
+    name: ichi_pgdata

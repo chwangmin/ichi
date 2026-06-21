@@ -1,0 +1,55 @@
+# --- Secrets ---
+.env
+*.local
+!.env.example
+
+# --- Java / Gradle ---
+backend/.gradle/
+backend/build/
+backend/bin/
+backend/out/
+backend/!**/src/main/**/build/
+backend/!**/src/test/**/build/
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# --- Node / Vite ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+# vue-tsc 가 node tsconfig 빌드 시 내보내는 산출물
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# --- Capacitor (native build artifacts; platform projects themselves are kept) ---
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/local.properties
+frontend/android/.idea/
+frontend/ios/App/Pods/
+frontend/ios/App/build/
+frontend/ios/DerivedData/
+frontend/.env
+
+# --- IDE ---
+.idea/
+.idea.bak.*/
+.idea.broken.*/
+.idea.rootbak.*/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# --- Claude Code (개인 로컬 설정: 절대경로/머신 종속 항목이라 커밋 안 함) ---
+.claude/settings.json
+.claude/settings.local.json
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+npm-debug.log*
